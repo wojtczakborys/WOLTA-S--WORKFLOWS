@@ -1,0 +1,448 @@
+{
+  "id": "5ymYMgnnWWBqMYLh",
+  "name": "Agent WOLT - zadania ClickUp",
+  "active": false,
+  "activeVersionId": null,
+  "createdAt": "2026-10-15T11:10:57.054Z",
+  "updatedAt": "2026-10-16T06:00:17.677Z",
+  "isArchived": false,
+  "versionId": "b25c5048-d499-405b-bf41-72242fcea73d",
+  "triggerCount": 2,
+  "nodes": [
+    {
+      "id": "c22fb19f-d10c-49cb-b731-b2e940744924",
+      "name": "Agent ElevenLabs - zadania ClickUp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        96
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent-wolt-clickup-zadania",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {
+          "onlyRunIf": "={{ $json.headers['x-agent-key'] === 'Errr2pnP_wzPI3CCN577zoq3B3JYLznQlj1m1cDo' }}"
+        }
+      },
+      "webhookId": "7dc25612-f8ac-4fe8-a9a3-cb1d7ed4ac65"
+    },
+    {
+      "id": "7d715f0e-c30d-441d-8b79-d1e4ab51bb20",
+      "name": "Przygotuj zapytanie",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        96
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "query",
+              "name": "query",
+              "value": "={{ String($json.body?.query ?? $json.body?.zapytanie ?? \"\").trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ String($json.body?.status ?? \"\").trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "listId",
+              "name": "listId",
+              "value": "901222808141",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "36076e06-6afb-442e-a372-9c296326533f",
+      "name": "Pobierz zadania z listy Plan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        96
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.clickup.com/api/v2/list/{{ $json.listId }}/task?include_closed=true&subtasks=true&order_by=updated&reverse=true",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "pk_105689437_47ZEHB15OGJWBD0YRYIXHH6A2NY8IJ2Y"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000,
+          "pagination": {
+            "pagination": {
+              "paginationMode": "updateAParameterInEachRequest",
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "page",
+                    "value": "={{ $pageCount }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.last_page === true || !($response.body.tasks || []).length }}",
+              "limitPagesFetched": true,
+              "maxRequests": 5
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "29e74678-0682-4299-8346-61fc291c8339",
+      "name": "Przygotuj odpowiedź dla agenta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const p = $('Przygotuj zapytanie').first().json;\nconst norm = (s) => String(s || '').toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '');\nconst words = norm(p.query).split(/[^a-z0-9]+/).filter(w => w.length > 2).map(w => w.length > 5 ? w.slice(0, w.length - 2) : w);\nconst statusFilter = norm(p.status);\nconst tasks = $input.all().flatMap(i => i.json.tasks || []);\nconst d = (ms) => ms ? new Date(Number(ms)).toISOString().slice(0, 10) : null;\nlet rows = tasks.map(t => {\n  const hay = norm([t.name, t.text_content || t.description || '', (t.tags || []).map(x => x.name).join(' '), (t.assignees || []).map(a => a.username).join(' ')].join(' '));\n  const score = words.reduce((s, w) => s + (hay.includes(w) ? 1 : 0), 0);\n  return { t, score };\n});\nif (words.length) rows = rows.filter(r => r.score > 0);\nif (statusFilter) rows = rows.filter(r => norm(r.t.status && r.t.status.status).includes(statusFilter));\nrows.sort((a, b) => b.score - a.score || Number(b.t.date_updated || 0) - Number(a.t.date_updated || 0));\nconst statusy = {};\nfor (const r of rows) { const s = (r.t.status && r.t.status.status) || 'brak'; statusy[s] = (statusy[s] || 0) + 1; }\nconst zadania = rows.slice(0, 15).map(r => ({\n  nazwa: r.t.name,\n  status: r.t.status && r.t.status.status,\n  przypisani: (r.t.assignees || []).map(a => a.username).join(', ') || 'nikt',\n  termin: d(r.t.due_date),\n  priorytet: r.t.priority && r.t.priority.priority,\n  ostatnia_zmiana: d(r.t.date_updated),\n  opis: String(r.t.text_content || '').replace(/\\s+/g, ' ').slice(0, 300),\n  link: r.t.url\n}));\nreturn [{ json: {\n  lista: 'Plan (Dział Techniczo-Montażowy)',\n  zapytanie: p.query,\n  liczba_pasujacych: rows.length,\n  liczba_wszystkich_zadan: tasks.length,\n  podsumowanie_statusow: statusy,\n  zadania,\n  instrukcja: 'Odpowiadaj tylko na podstawie tych zadań. Podawaj nazwę zadania, status, osobę i termin. Jeśli pasujących jest więcej niż 15, powiedz o tym i zaproponuj zawężenie. Nie czytaj linków. Jeśli nic nie pasuje, powiedz to wprost.'\n} }];"
+      }
+    },
+    {
+      "id": "21296f8c-79df-41a5-9e84-54bd92b3aca1",
+      "name": "Odpowiedź: zadania",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      }
+    },
+    {
+      "id": "51dc7cfa-8850-45d6-bee2-4ed9ed550b02",
+      "name": "Odpowiedź: błąd ClickUp",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        192
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: \"blad\", komunikat: \"Nie udało się teraz pobrać zadań z ClickUp. Powiedz rozmówcy, że ClickUp jest chwilowo niedostępny.\" }) }}"
+      }
+    },
+    {
+      "id": "759a195c-a260-4db8-a205-50b75b71ffdd",
+      "name": "Sticky Note 4b1ffceb",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        192,
+        -96
+      ],
+      "parameters": {
+        "content": "## Zadania ClickUp (tylko odczyt)\nLista: **Plan** (Dział Techniczo-Montażowy). Agent wysyła opcjonalnie `query` i `status`. Token ClickUp: nagłówek w węźle „Pobierz zadania z listy Plan”.",
+        "color": 3,
+        "width": 608,
+        "height": 320
+      }
+    },
+    {
+      "id": "ceaca08c-491d-401c-ab68-437393f954d2",
+      "name": "Agent ElevenLabs - nowe zadanie",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        520
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {
+          "onlyRunIf": "={{ $json.headers['x-agent-key'] === 'Errr2pnP_wzPI3CCN577zoq3B3JYLznQlj1m1cDo' }}"
+        },
+        "path": "agent-wolt-clickup-nowe-zadanie",
+        "responseMode": "responseNode"
+      },
+      "webhookId": "a2bfab7e-0a72-44e0-bee2-c2a560615b93"
+    },
+    {
+      "id": "d57a07e4-5b2e-4700-afc9-31f9554e0839",
+      "name": "Przygotuj nowe zadanie",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        520
+      ],
+      "parameters": {
+        "jsCode": "// Przygotowanie nowego zadania ClickUp na podstawie danych od agenta\nconst TOKEN = 'pk_105689437_47ZEHB15OGJWBD0YRYIXHH6A2NY8IJ2Y';\nconst TEAM_ID = '90121973040';\nconst b = $input.first().json.body || {};\nconst norm = (s) => String(s || '').toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').trim();\nconst name = String(b.nazwa || b.name || '').trim();\nconst description = String(b.opis || b.description || '').trim();\nconst terminRaw = String(b.termin || b.due_date || '').trim();\nconst prioRaw = norm(b.priorytet || b.priority || '');\nconst osobyRaw = String(b.osoby || b.assignees || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean);\n\nif (!name) return [{ json: { ok: false, powod: 'Brak nazwy zadania. Zapytaj rozmówcę, jak ma się nazywać zadanie.' } }];\n\n// Termin w formacie RRRR-MM-DD\nlet due = null;\nif (terminRaw) {\n  const m = terminRaw.match(/^(\\d{4})-(\\d{2})-(\\d{2})$/);\n  if (!m) return [{ json: { ok: false, powod: 'Termin musi mieć format RRRR-MM-DD (np. 2026-10-23). Przelicz datę podaną przez rozmówcę i spróbuj ponownie.' } }];\n  due = Date.UTC(+m[1], +m[2] - 1, +m[3], 10, 0, 0);\n}\n\n// Priorytet: 1 pilny, 2 wysoki, 3 normalny, 4 niski\nconst prioMap = { pilny: 1, pilne: 1, urgent: 1, wysoki: 2, high: 2, normalny: 3, normal: 3, sredni: 3, niski: 4, low: 4 };\nconst priority = prioRaw ? (prioMap[prioRaw] || null) : null;\n\n// Osoby: dopasowanie do członków przestrzeni ClickUp\nlet members = [];\ntry {\n  const r = await this.helpers.httpRequest({ method: 'GET', url: 'https://api.clickup.com/api/v2/team', headers: { Authorization: TOKEN }, json: true, timeout: 8000 });\n  const team = (r.teams || []).find(t => String(t.id) === TEAM_ID) || (r.teams || [])[0] || {};\n  members = (team.members || []).map(m => m.user).filter(Boolean);\n} catch (e) { members = []; }\nconst assignees = [];\nconst nieznalezieni = [];\nconst wieleDopasowan = [];\nfor (const o of osobyRaw) {\n  const parts = norm(o).split(/\\s+/).filter(Boolean);\n  const hits = members.filter(u => {\n    const hay = norm((u.username || '') + ' ' + (u.email || ''));\n    return parts.every(p => hay.includes(p));\n  });\n  if (hits.length === 1) assignees.push({ id: hits[0].id, kto: hits[0].username });\n  else if (hits.length > 1) wieleDopasowan.push(o + ' (' + hits.map(h => h.username).join(', ') + ')');\n  else nieznalezieni.push(o);\n}\nif (wieleDopasowan.length) return [{ json: { ok: false, powod: 'Kilka osób pasuje do: ' + wieleDopasowan.join('; ') + '. Dopytaj rozmówcę o nazwisko.' } }];\n\nconst payload = { name, markdown_description: description || undefined, assignees: assignees.map(a => a.id) };\nif (due) { payload.due_date = due; payload.due_date_time = false; }\nif (priority) payload.priority = priority;\nreturn [{ json: { ok: true, payload, przypisani: assignees.map(a => a.kto), nieznalezieni } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "0bb34891-83b0-4db4-8f5d-396ffcb5b345",
+      "name": "Dane zadania poprawne?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        520
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "ok1",
+              "leftValue": "={{ $json.ok }}",
+              "operator": {
+                "operation": "equals",
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          }
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "57dede5d-8ceb-4a27-99fc-41608888c534",
+      "name": "Utwórz zadanie w ClickUp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        672,
+        440
+      ],
+      "parameters": {
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "pk_105689437_47ZEHB15OGJWBD0YRYIXHH6A2NY8IJ2Y"
+            }
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "method": "POST",
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "sendHeaders": true,
+        "specifyBody": "json",
+        "url": "https://api.clickup.com/api/v2/list/901222808141/task"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "4f634b16-45c6-4d43-a1af-927b01ca3ab3",
+      "name": "Odpowiedź: zadanie utworzone",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        380
+      ],
+      "parameters": {
+        "options": {},
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'utworzono', nazwa: $json.name, lista: 'Plan', przypisani: $('Przygotuj nowe zadanie').first().json.przypisani, nie_znaleziono_w_clickup: $('Przygotuj nowe zadanie').first().json.nieznalezieni, termin: $('Przygotuj nowe zadanie').first().json.payload.due_date ? new Date(Number($('Przygotuj nowe zadanie').first().json.payload.due_date)).toISOString().slice(0,10) : null, komunikat: 'Zadanie zostało utworzone w ClickUp.' }) }}"
+      }
+    },
+    {
+      "id": "952301c1-d0b4-4746-819b-fc86b755d631",
+      "name": "Odpowiedź: błąd tworzenia",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        520
+      ],
+      "parameters": {
+        "options": {},
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'blad', komunikat: 'Nie udało się utworzyć zadania w ClickUp. Powiedz rozmówcy, że zadanie NIE zostało utworzone, i zaproponuj ponowną próbę.' }) }}"
+      }
+    },
+    {
+      "id": "0686d685-e51c-49a7-b688-42856b386fda",
+      "name": "Odpowiedź: odrzucono zadanie",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        640
+      ],
+      "parameters": {
+        "options": {},
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'odrzucono', komunikat: $json.powod }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Agent ElevenLabs - zadania ClickUp": {
+      "main": [
+        [
+          {
+            "node": "Przygotuj zapytanie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Przygotuj zapytanie": {
+      "main": [
+        [
+          {
+            "node": "Pobierz zadania z listy Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pobierz zadania z listy Plan": {
+      "main": [
+        [
+          {
+            "node": "Przygotuj odpowiedź dla agenta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Odpowiedź: błąd ClickUp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Przygotuj odpowiedź dla agenta": {
+      "main": [
+        [
+          {
+            "node": "Odpowiedź: zadania",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent ElevenLabs - nowe zadanie": {
+      "main": [
+        [
+          {
+            "node": "Przygotuj nowe zadanie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Przygotuj nowe zadanie": {
+      "main": [
+        [
+          {
+            "node": "Dane zadania poprawne?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dane zadania poprawne?": {
+      "main": [
+        [
+          {
+            "node": "Utwórz zadanie w ClickUp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Odpowiedź: odrzucono zadanie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Utwórz zadanie w ClickUp": {
+      "main": [
+        [
+          {
+            "node": "Odpowiedź: zadanie utworzone",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Odpowiedź: błąd tworzenia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodeGroups": [],
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
+  "tags": [],
+  "shared": [
+    {
+      "role": "workflow:owner",
+      "workflowId": "5ymYMgnnWWBqMYLh",
+      "projectId": "gGlMu6HKIzDR2yGB",
+      "createdAt": "2026-10-15T11:10:57.057Z",
+      "updatedAt": "2026-10-15T11:10:57.057Z"
+    }
+  ],
+  "activeVersion": null
+}
