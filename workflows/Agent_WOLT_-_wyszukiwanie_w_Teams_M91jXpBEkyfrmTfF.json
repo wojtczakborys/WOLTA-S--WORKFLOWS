@@ -1,0 +1,283 @@
+{
+  "id": "M91jXpBEkyfrmTfF",
+  "name": "Agent WOLT - wyszukiwanie w Teams",
+  "active": false,
+  "activeVersionId": null,
+  "createdAt": "2026-10-15T08:51:44.049Z",
+  "updatedAt": "2026-10-15T09:27:13.194Z",
+  "isArchived": false,
+  "versionId": "f008719c-6cd0-4f73-9c4f-64b7bf29d316",
+  "triggerCount": 0,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent-wolt-szukaj-dokumentow",
+        "responseMode": "responseNode",
+        "options": {
+          "onlyRunIf": "={{ $json.headers['x-agent-key'] === 'Errr2pnP_wzPI3CCN577zoq3B3JYLznQlj1m1cDo' }}"
+        }
+      },
+      "id": "f7a1f09e-cf91-4035-b749-575e78f4192f",
+      "name": "Agent ElevenLabs - szukaj w dokumentach",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        128
+      ],
+      "webhookId": "cd529517-4ac2-4438-9780-fe82537ae795"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "query",
+              "name": "query",
+              "value": "={{ String($json.body?.query ?? $json.body?.zapytanie ?? $json.query ?? \"\").replace(/[\"\\\\]/g, \" \").trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "groupId",
+              "name": "groupId",
+              "value": "f19ccf5e-ccdf-4272-8ce0-f90d571cc94a",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "65ab3a23-3435-40fb-9993-fd8b9afbfa28",
+      "name": "Przygotuj zapytanie",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://graph.microsoft.com/v1.0/groups/{{ $json.groupId }}/drive/root/children?$select=id,name,webUrl,folder&$top=200",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOneDriveOAuth2Api",
+        "options": {
+          "timeout": 8000
+        }
+      },
+      "id": "770c13cb-b7fd-42be-8385-e44fa84f0bd1",
+      "name": "Znajdź folder kanału Ogólny",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        128
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.microsoft.com/v1.0/search/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "microsoftOneDriveOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const f = ($json.value || []).find(x => x.folder && [\"ogólny\",\"ogolny\",\"general\"].includes(String(x.name).toLowerCase())); const q = $(\"Przygotuj zapytanie\").item.json.query; const scope = f ? \" path:\\\"\" + decodeURI(f.webUrl) + \"\\\"\" : \"\"; return JSON.stringify({ requests: [{ entityTypes: [\"driveItem\"], query: { queryString: q + scope }, from: 0, size: 8, fields: [\"name\", \"webUrl\", \"lastModifiedDateTime\", \"lastModifiedBy\", \"parentReference\"] }] }); })() }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "99827b23-aee0-4061-828f-c09dee77de94",
+      "name": "Szukaj w dokumentach (Microsoft Search)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        624,
+        16
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "zapytanie",
+              "name": "zapytanie",
+              "value": "={{ $(\"Przygotuj zapytanie\").item.json.query }}",
+              "type": "string"
+            },
+            {
+              "id": "wyniki",
+              "name": "wyniki",
+              "value": "={{ ((($json.value || [])[0]?.hitsContainers || [])[0]?.hits || []).map(h => ({ dokument: h.resource?.name, fragment: String(h.summary || \"\").replace(/<[^>]+>/g, \"\").replace(/\\s+/g, \" \").trim(), ostatnia_zmiana: String(h.resource?.lastModifiedDateTime || \"\").slice(0, 10), link: h.resource?.webUrl })) }}",
+              "type": "array"
+            },
+            {
+              "id": "liczba",
+              "name": "liczba_wynikow",
+              "value": "={{ ((($json.value || [])[0]?.hitsContainers || [])[0]?.hits || []).length }}",
+              "type": "number"
+            },
+            {
+              "id": "instrukcja",
+              "name": "instrukcja",
+              "value": "Odpowiadaj na podstawie fragmentów i podaj nazwę dokumentu jako źródło. Jeśli wyników jest 0 lub fragmenty nie odpowiadają na pytanie, powiedz to wprost i nie zgaduj.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "27356007-8c50-444c-8786-41447dcaf6f1",
+      "name": "Przygotuj wyniki dla agenta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "b96e2a68-ca72-4e9e-81a0-4ffb874f7151",
+      "name": "Odpowiedź: wyniki",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: \"blad\", komunikat: \"Wyszukiwanie w dokumentach Teams chwilowo nie działa. Powiedz rozmówcy, że nie możesz teraz sprawdzić dokumentów, i odpowiedz tylko na podstawie własnej bazy wiedzy, zaznaczając to.\" }) }}",
+        "options": {}
+      },
+      "id": "b7d69666-205b-4d70-a571-6c65a4a391b6",
+      "name": "Odpowiedź: błąd wyszukiwania",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Wyszukiwanie w plikach Teams\nZespół: **Dział Techniczno-Montażowy**, kanał **Ogólny**. Agent wysyła `query`, workflow zwraca do 8 dokumentów z fragmentami tekstu.",
+        "height": 352,
+        "width": 832,
+        "color": 5
+      },
+      "id": "f053d29e-32e9-4c52-bc21-3d675cc5c543",
+      "name": "Sticky Note 3ce39110",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        192,
+        -96
+      ]
+    }
+  ],
+  "connections": {
+    "Agent ElevenLabs - szukaj w dokumentach": {
+      "main": [
+        [
+          {
+            "node": "Przygotuj zapytanie",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Przygotuj zapytanie": {
+      "main": [
+        [
+          {
+            "node": "Znajdź folder kanału Ogólny",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Znajdź folder kanału Ogólny": {
+      "main": [
+        [
+          {
+            "node": "Szukaj w dokumentach (Microsoft Search)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Odpowiedź: błąd wyszukiwania",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Szukaj w dokumentach (Microsoft Search)": {
+      "main": [
+        [
+          {
+            "node": "Przygotuj wyniki dla agenta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Odpowiedź: błąd wyszukiwania",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Przygotuj wyniki dla agenta": {
+      "main": [
+        [
+          {
+            "node": "Odpowiedź: wyniki",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodeGroups": [],
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true,
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp"
+  },
+  "tags": [],
+  "shared": [
+    {
+      "role": "workflow:owner",
+      "workflowId": "M91jXpBEkyfrmTfF",
+      "projectId": "gGlMu6HKIzDR2yGB",
+      "createdAt": "2026-10-15T08:51:44.052Z",
+      "updatedAt": "2026-10-15T08:51:44.052Z"
+    }
+  ],
+  "activeVersion": null
+}
