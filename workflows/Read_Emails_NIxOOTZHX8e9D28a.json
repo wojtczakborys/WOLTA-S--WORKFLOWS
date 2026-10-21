@@ -1,0 +1,137 @@
+{
+  "id": "NIxOOTZHX8e9D28a",
+  "name": "Read Emails",
+  "active": false,
+  "activeVersionId": null,
+  "createdAt": "2026-10-03T19:51:08.255Z",
+  "updatedAt": "2026-10-14T09:27:42.000Z",
+  "isArchived": true,
+  "versionId": "c263e92e-9408-4670-9546-885af61c79a8",
+  "triggerCount": 0,
+  "nodes": [
+    {
+      "id": "32bd531c-13d4-47c6-86c7-063b7d21bbf2",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "read-emails",
+        "responseMode": "responseNode"
+      },
+      "webhookId": "02fb6cdc-8730-487e-b695-316511533596"
+    },
+    {
+      "id": "397b90e6-c8fc-4ecb-ac8b-a59550ec4bd6",
+      "name": "Microsoft Outlook",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 5,
+        "filtersUI": {
+          "values": {
+            "filterBy": "search",
+            "search": "={{ $json.body.query || \"\" }}"
+          }
+        },
+        "authentication": "microsoftOutlookOAuth2Api"
+      },
+      "credentials": {},
+      "webhookId": "3378c7cb-467e-4c65-9bff-32cd06f8f178"
+    },
+    {
+      "id": "f3be8a10-5880-41f4-bd13-0d0312ed7f7a",
+      "name": "Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const emails = items.map(item => ({\n  from: item.json.from?.emailAddress?.name || item.json.from?.emailAddress?.address,\n  subject: item.json.subject,\n  receivedDateTime: item.json.receivedDateTime,\n  snippet: item.json.bodyPreview ? item.json.bodyPreview.slice(0, 300) : ''\n}));\n\nreturn [{ json: { count: emails.length, emails: emails } }];"
+      }
+    },
+    {
+      "id": "24c24856-9374-4669-ac9b-db7449ade12e",
+      "name": "Respond To Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "firstIncomingItem"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Microsoft Outlook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft Outlook": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Respond To Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodeGroups": [],
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "meta": null,
+  "tags": [],
+  "shared": [
+    {
+      "role": "workflow:owner",
+      "workflowId": "NIxOOTZHX8e9D28a",
+      "projectId": "gGlMu6HKIzDR2yGB",
+      "createdAt": "2026-10-03T19:51:08.257Z",
+      "updatedAt": "2026-10-03T19:51:08.257Z"
+    }
+  ],
+  "activeVersion": null
+}
