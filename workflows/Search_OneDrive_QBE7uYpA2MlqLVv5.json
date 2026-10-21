@@ -1,0 +1,129 @@
+{
+  "id": "QBE7uYpA2MlqLVv5",
+  "name": "Search OneDrive",
+  "active": false,
+  "activeVersionId": null,
+  "createdAt": "2026-10-08T09:12:39.004Z",
+  "updatedAt": "2026-10-14T09:27:43.000Z",
+  "isArchived": true,
+  "versionId": "718dac76-34f4-48d4-a87f-4790dc4a22aa",
+  "triggerCount": 0,
+  "nodes": [
+    {
+      "id": "764e58c3-f02e-44f5-84f0-936b03f14daf",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "search-onedrive",
+        "responseMode": "responseNode"
+      },
+      "webhookId": "a9733bf8-0c26-4321-a601-4aaafd7a081c"
+    },
+    {
+      "id": "adfe3583-ee66-4e4e-89eb-44aa65faa4f9",
+      "name": "Microsoft One Drive",
+      "type": "n8n-nodes-base.microsoftOneDrive",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "search",
+        "query": "={{ $json.body.query || \"\" }}",
+        "authentication": "microsoftOneDriveOAuth2Api"
+      },
+      "credentials": {}
+    },
+    {
+      "id": "72791f5b-696c-40e1-b2e2-34fbec8d3bd8",
+      "name": "Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const files = items.map(item => ({\n  id: item.json.id,\n  name: item.json.name,\n  mimeType: item.json.file?.mimeType,\n  size: item.json.size,\n  lastModifiedDateTime: item.json.lastModifiedDateTime,\n  modifiedBy: item.json.lastModifiedBy?.user?.displayName,\n  webUrl: item.json.webUrl,\n  folderPath: item.json.parentReference?.path\n}));\n\nreturn [{ json: { count: files.length, files: files } }];"
+      }
+    },
+    {
+      "id": "a264700a-271a-4011-9d0e-96870d354ef7",
+      "name": "Respond To Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        },
+        "respondWith": "firstIncomingItem"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Microsoft One Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Microsoft One Drive": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Respond To Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodeGroups": [],
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "staticData": null,
+  "meta": null,
+  "tags": [],
+  "shared": [
+    {
+      "role": "workflow:owner",
+      "workflowId": "QBE7uYpA2MlqLVv5",
+      "projectId": "gGlMu6HKIzDR2yGB",
+      "createdAt": "2026-10-08T09:12:39.005Z",
+      "updatedAt": "2026-10-08T09:12:39.005Z"
+    }
+  ],
+  "activeVersion": null
+}
